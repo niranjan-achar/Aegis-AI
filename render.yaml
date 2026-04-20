@@ -1,0 +1,71 @@
+services:
+  - type: web
+    name: aegis-ai-backend
+    env: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: AEGIS_ENV
+        value: production
+      - key: AEGIS_HOST
+        value: 0.0.0.0
+      - key: AEGIS_PORT
+        value: 10000
+      - key: AEGIS_CORS_ORIGINS
+        sync: false
+      - key: AEGIS_REDIS_URL
+        fromService:
+          type: redis
+          name: aegis-ai-redis
+          property: connectionString
+      - key: AEGIS_CELERY_BROKER_URL
+        fromService:
+          type: redis
+          name: aegis-ai-redis
+          property: connectionString
+      - key: AEGIS_CELERY_RESULT_BACKEND
+        fromService:
+          type: redis
+          name: aegis-ai-redis
+          property: connectionString
+
+  - type: worker
+    name: aegis-ai-worker
+    env: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: celery -A workers.ewc_worker worker --loglevel=info --pool=solo
+    envVars:
+      - key: AEGIS_ENV
+        value: production
+      - key: AEGIS_REDIS_URL
+        fromService:
+          type: redis
+          name: aegis-ai-redis
+          property: connectionString
+      - key: AEGIS_CELERY_BROKER_URL
+        fromService:
+          type: redis
+          name: aegis-ai-redis
+          property: connectionString
+      - key: AEGIS_CELERY_RESULT_BACKEND
+        fromService:
+          type: redis
+          name: aegis-ai-redis
+          property: connectionString
+
+  - type: web
+    name: aegis-ai-frontend
+    env: static
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_API_URL
+        sync: false
+
+databases:
+  - name: aegis-ai-redis
+    plan: free
+    type: redis

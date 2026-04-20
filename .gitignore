@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Node
+frontend/node_modules/
+frontend/dist/
+
+# Environments
+.env
+.venv/
+venv/
+Aegis-Prompt.txt
+archive.zip
+malimg/
+Guide/
+frontend/
+
+# Runtime and generated assets
+backend/models/*
+!backend/models/.gitkeep
+backend/data/*
+!backend/data/.gitkeep
+backend/tmp/
+backend/mlruns/
+*.log
+
+# Notebooks
+.ipynb_checkpoints/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+
+git init
+git add .
+git commit -m "first commit"
+git branch -M main
+git remote add origin https://github.com/niranjan-achar/Aegis-AI.git
+git push -u origin main
