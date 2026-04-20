@@ -1,0 +1,52 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: dark;
+    font-family: "Inter", system-ui, sans-serif;
+    background:
+      radial-gradient(circle at top left, rgba(108, 99, 255, 0.22), transparent 28%),
+      radial-gradient(circle at bottom right, rgba(56, 150, 245, 0.15), transparent 22%),
+      #0a0a0f;
+  }
+
+  body {
+    @apply m-0 min-h-screen bg-aegis-bg text-white antialiased;
+  }
+
+  * {
+    @apply border-white/10;
+  }
+}
+
+@layer components {
+  .glass-card {
+    background: rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 16px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  }
+
+  .glass-button {
+    @apply rounded-xl border border-white/10 bg-white/5 px-4 py-3 font-medium text-white transition hover:bg-white/10;
+  }
+
+  .page-shell {
+    @apply min-h-screen bg-aegis-bg px-4 pb-24 pt-4 md:pl-[104px] md:pr-6 md:pt-6;
+  }
+}
+
+@keyframes dash-offset {
+  from {
+    stroke-dashoffset: 0;
+  }
+
+  to {
+    stroke-dashoffset: 100;
+  }
+}
