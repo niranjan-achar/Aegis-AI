@@ -15,9 +15,10 @@ frontend/dist/
 venv/
 Aegis-Prompt.txt
 archive.zip
+checkpoints
 malimg/
 Guide/
-frontend/
+kaggle.json
 
 # Runtime and generated assets
 backend/models/*
