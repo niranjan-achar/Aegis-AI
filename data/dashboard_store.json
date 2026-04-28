@@ -1,0 +1,42 @@
+{
+  "scans": [],
+  "alerts": [],
+  "incidents": [],
+  "watch_folders": [
+    {
+      "id": "b85d3cb6-32da-4eb5-a5ab-e9f4110dde93",
+      "path": "C:\\Users\\Niranjan Acharya\\Downloads",
+      "recursive": true,
+      "extensions": [
+        ".exe",
+        ".dll",
+        ".scr",
+        ".bat",
+        ".ps1",
+        ".cmd",
+        ".com",
+        ".zip",
+        ".rar"
+      ],
+      "created_at": "2026-04-21T08:31:45.109912+00:00"
+    },
+    {
+      "id": "cb272a64-6c4f-4b6a-9cf1-61e181c445e7",
+      "path": "C:\\Users\\Niranjan Acharya\\Desktop",
+      "recursive": true,
+      "extensions": [
+        ".exe",
+        ".dll",
+        ".scr",
+        ".bat",
+        ".ps1",
+        ".cmd",
+        ".com",
+        ".zip",
+        ".rar"
+      ],
+      "created_at": "2026-04-21T08:31:45.109912+00:00"
+    }
+  ],
+  "telemetry_events": []
+}

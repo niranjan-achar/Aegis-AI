@@ -11,32 +11,59 @@ from typing import Any
 
 import numpy as np
 import pefile
-import timm
-import torch
-import torch.nn.functional as F
 from PIL import Image
-from torchcam.methods import GradCAM
 
 from config import get_settings
 
+try:
+    import timm
+    import torch
+    import torch.nn.functional as F
+    from torchcam.methods import GradCAM
+except ModuleNotFoundError:
+    timm = None
+    torch = None
+    F = None
+    GradCAM = None
 
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-IMAGENET_MEAN = torch.tensor([0.485, 0.456, 0.406], dtype=torch.float32).view(1, 3, 1, 1)
-IMAGENET_STD = torch.tensor([0.229, 0.224, 0.225], dtype=torch.float32).view(1, 3, 1, 1)
+
+def _ensure_xai_dependencies() -> None:
+    if any(item is None for item in (timm, torch, F, GradCAM)):
+        raise ModuleNotFoundError(
+            "Grad-CAM dependencies are missing. Install `torch`, `timm`, and `torchcam` "
+            "in the `aegis` environment to enable explainability."
+        )
 
 
-def _preprocess(image_path: Path) -> torch.Tensor:
+def _device():
+    _ensure_xai_dependencies()
+    return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
+def _imagenet_mean():
+    _ensure_xai_dependencies()
+    return torch.tensor([0.485, 0.456, 0.406], dtype=torch.float32).view(1, 3, 1, 1)
+
+
+def _imagenet_std():
+    _ensure_xai_dependencies()
+    return torch.tensor([0.229, 0.224, 0.225], dtype=torch.float32).view(1, 3, 1, 1)
+
+
+def _preprocess(image_path: Path):
+    _ensure_xai_dependencies()
     image = Image.open(image_path).convert("RGB").resize((224, 224), Image.Resampling.LANCZOS)
     array = np.asarray(image).astype(np.float32) / 255.0
     tensor = torch.from_numpy(np.transpose(array, (2, 0, 1))).unsqueeze(0)
-    tensor = (tensor - IMAGENET_MEAN) / IMAGENET_STD
-    return tensor.to(DEVICE)
+    tensor = (tensor - _imagenet_mean()) / _imagenet_std()
+    return tensor.to(_device())
 
 
 @lru_cache(maxsize=1)
-def get_pytorch_model() -> torch.nn.Module:
+def get_pytorch_model():
     """Load the PyTorch EfficientNet once and keep it resident for Grad-CAM."""
 
+    _ensure_xai_dependencies()
     weights_path = get_settings().model_dir / "efficientnet_b1_pytorch.pth"
     if not weights_path.exists():
         raise FileNotFoundError(
@@ -45,9 +72,9 @@ def get_pytorch_model() -> torch.nn.Module:
         )
 
     model = timm.create_model("efficientnet_b1", pretrained=False, num_classes=26)
-    state_dict = torch.load(weights_path, map_location=DEVICE)
+    state_dict = torch.load(weights_path, map_location=_device())
     model.load_state_dict(state_dict)
-    model.to(DEVICE)
+    model.to(_device())
     model.eval()
     return model
 

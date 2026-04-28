@@ -4,20 +4,25 @@ from __future__ import annotations
 
 import hashlib
 import json
+from asyncio import to_thread
 from pathlib import Path
 from typing import Any
 
-import aiofiles
 from fastapi import HTTPException, UploadFile
 from redis.asyncio import Redis
 
 from config import get_settings
 
+try:
+    import aiofiles
+except ModuleNotFoundError:
+    aiofiles = None
+
 
 MAX_UPLOAD_SIZE = 20 * 1024 * 1024
 
 
-async def ingest_upload(upload: UploadFile, redis_client: Redis) -> dict[str, Any]:
+async def ingest_upload(upload: UploadFile, redis_client: Redis | None) -> dict[str, Any]:
     """Read an uploaded file, hash it, and short-circuit on Redis cache hits."""
 
     settings = get_settings()
@@ -29,7 +34,12 @@ async def ingest_upload(upload: UploadFile, redis_client: Redis) -> dict[str, An
 
     sha256 = hashlib.sha256(content).hexdigest()
     cache_key = f"aegis:scan:{sha256}"
-    cached = await redis_client.get(cache_key)
+    cached = None
+    if redis_client is not None:
+        try:
+            cached = await redis_client.get(cache_key)
+        except Exception:
+            cached = None
     if cached:
         return {
             "cache_hit": True,
@@ -39,8 +49,11 @@ async def ingest_upload(upload: UploadFile, redis_client: Redis) -> dict[str, An
         }
 
     file_path = settings.upload_dir / f"{sha256}.bin"
-    async with aiofiles.open(file_path, "wb") as handle:
-        await handle.write(content)
+    if aiofiles is not None:
+        async with aiofiles.open(file_path, "wb") as handle:
+            await handle.write(content)
+    else:
+        await to_thread(file_path.write_bytes, content)
 
     return {
         "cache_hit": False,

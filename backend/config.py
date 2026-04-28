@@ -45,9 +45,23 @@ class Settings(BaseSettings):
     mlflow_tracking_uri: str = Field(
         default="file:./backend/mlruns", alias="AEGIS_MLFLOW_TRACKING_URI"
     )
+    mongo_uri: str = Field(default="", alias="AEGIS_MONGO_URI")
+    mongo_db: str = Field(default="aegis_ai", alias="AEGIS_MONGO_DB")
+    telemetry_store_path: Path = Field(
+        default=BACKEND_DIR / "data" / "dashboard_store.json",
+        alias="AEGIS_TELEMETRY_STORE_PATH",
+    )
+    network_poll_seconds: int = Field(default=6, alias="AEGIS_NETWORK_POLL_SECONDS")
+    watch_extensions: str = Field(
+        default=".exe,.dll,.scr,.bat,.ps1,.cmd,.com,.zip,.rar",
+        alias="AEGIS_WATCH_EXTENSIONS",
+    )
 
     def cors_origin_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+
+    def watch_extension_list(self) -> list[str]:
+        return [item.strip().lower() for item in self.watch_extensions.split(",") if item.strip()]
 
 
 @lru_cache(maxsize=1)

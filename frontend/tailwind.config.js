@@ -5,14 +5,14 @@ export default {
     extend: {
       colors: {
         aegis: {
-          bg: "#0a0a0f",
-          surface: "#0d1117",
-          primary: "#6C63FF",
-          danger: "#f76471",
-          warning: "#f6bb4f",
-          success: "#2ED573",
-          info: "#3896f5",
-          muted: "rgba(255,255,255,0.45)"
+          bg: "#071018",
+          surface: "#0c1724",
+          primary: "#22e1c3",
+          danger: "#ff6b6b",
+          warning: "#ffb84d",
+          success: "#57e389",
+          info: "#47c0ff",
+          muted: "rgba(214,226,239,0.55)"
         }
       },
       boxShadow: {

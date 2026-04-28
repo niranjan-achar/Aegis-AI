@@ -56,7 +56,17 @@ export function useWebSocket(url, enabled = true) {
 
     return () => {
       cancelled = true;
-      socketRef.current?.close();
+      const socket = socketRef.current;
+      if (!socket) {
+        return;
+      }
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.close();
+        return;
+      }
+      if (socket.readyState === WebSocket.CONNECTING) {
+        socket.onopen = () => socket.close();
+      }
     };
   }, [enabled, url]);
 

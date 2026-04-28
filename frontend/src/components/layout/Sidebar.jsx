@@ -1,11 +1,26 @@
 import { motion } from "framer-motion";
-import { Activity, Info, ListChecks, Shield } from "lucide-react";
+import {
+  Activity,
+  AlertTriangle,
+  BarChart3,
+  Globe,
+  Info,
+  ListChecks,
+  Radio,
+  Server,
+  Shield,
+} from "lucide-react";
 import { NavLink } from "react-router-dom";
 
 const links = [
   { to: "/", label: "Scan", icon: Shield },
+  { to: "/live", label: "Live", icon: Radio },
+  { to: "/analytics", label: "Analytics", icon: BarChart3 },
   { to: "/evolution", label: "Evolution", icon: Activity },
   { to: "/queue", label: "Queue", icon: ListChecks },
+  { to: "/network", label: "Network", icon: Globe },
+  { to: "/incidents", label: "Incidents", icon: AlertTriangle },
+  { to: "/system", label: "System", icon: Server },
   { to: "/about", label: "About", icon: Info },
 ];
 
@@ -27,7 +42,7 @@ export default function Sidebar() {
           </div>
         </div>
 
-        <nav className="flex flex-1 flex-col gap-2">
+        <nav className="flex flex-1 flex-col gap-2 overflow-y-auto pr-2">
           {links.map(({ to, label, icon: Icon }) => (
             <NavLink
               key={to}
@@ -45,13 +60,13 @@ export default function Sidebar() {
         </nav>
       </motion.aside>
 
-      <nav className="glass-card fixed bottom-4 left-4 right-4 z-40 flex justify-around p-2 md:hidden">
+      <nav className="glass-card fixed bottom-4 left-4 right-4 z-40 flex gap-2 overflow-x-auto p-2 md:hidden">
         {links.map(({ to, label, icon: Icon }) => (
           <NavLink
             key={to}
             to={to}
             className={({ isActive }) =>
-              `flex flex-col items-center gap-1 rounded-xl px-3 py-2 text-xs ${
+              `flex min-w-[76px] flex-col items-center gap-1 rounded-xl px-3 py-2 text-xs ${
                 isActive ? "bg-aegis-primary/20 text-white" : "text-aegis-muted"
               }`
             }
