@@ -36,6 +36,7 @@ export default function AccuracyChart({ runs }) {
             <XAxis dataKey="name" tick={{ fill: "#a7b0c0", fontSize: 12 }} />
             <YAxis domain={[0, 100]} tick={{ fill: "#a7b0c0", fontSize: 12 }} />
             <Tooltip
+              cursor={false}
               contentStyle={{
                 background: "rgba(13, 17, 23, 0.92)",
                 border: "1px solid rgba(255,255,255,0.12)",

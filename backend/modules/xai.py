@@ -113,7 +113,15 @@ def generate_gradcam_explanation(
 
     logits = model(input_tensor)
 
-    activation_map = cam_extractor(class_idx=predicted_index, scores=logits)[0].unsqueeze(0).unsqueeze(0)
+    activation_map = cam_extractor(class_idx=predicted_index, scores=logits)[0]
+    if activation_map.dim() == 2:
+        activation_map = activation_map.unsqueeze(0).unsqueeze(0)
+    elif activation_map.dim() == 3:
+        activation_map = activation_map.unsqueeze(0)
+    elif activation_map.dim() != 4:
+        raise ValueError(
+            f"Unexpected activation map shape: {tuple(activation_map.shape)}"
+        )
     upsampled = F.interpolate(activation_map, size=(224, 224), mode="bilinear", align_corners=False)
     heatmap = upsampled.squeeze().detach().cpu().numpy()
     heatmap = (heatmap - heatmap.min()) / max(heatmap.max() - heatmap.min(), 1e-8)

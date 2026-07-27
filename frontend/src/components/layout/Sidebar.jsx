@@ -28,13 +28,13 @@ export default function Sidebar() {
   return (
     <>
       <motion.aside
-        initial={{ width: 72 }}
-        whileHover={{ width: 220 }}
-        className="glass-card fixed left-4 top-4 z-40 hidden h-[calc(100vh-2rem)] overflow-hidden p-4 md:flex md:flex-col"
+        initial={{ width: 71 }}
+        whileHover={{ width: 180 }}
+        className="glass-card fixed left-4 top-4 z-40 hidden h-[calc(100vh-2rem)] overflow-hidden p-2 md:flex md:flex-col"
       >
         <div className="mb-10 flex items-center gap-3">
-          <div className="rounded-2xl bg-aegis-primary/20 p-3 text-aegis-primary">
-            <Shield className="h-5 w-5" />
+          <div className="rounded-2xl bg-aegis-primary/20 p-4 text-aegis-primary">
+            <Shield className="h-6 w-6" />
           </div>
           <div>
             <p className="text-lg font-bold tracking-[0.2em] text-aegis-primary">AEGIS</p>
@@ -48,7 +48,7 @@ export default function Sidebar() {
               key={to}
               to={to}
               className={({ isActive }) =>
-                `flex items-center gap-3 rounded-2xl px-4 py-3 transition ${
+                `mx-1 flex w-full items-center gap-4 rounded-2xl px-4 py-4 transition ${
                   isActive ? "bg-aegis-primary/20 text-white" : "text-aegis-muted hover:bg-white/5 hover:text-white"
                 }`
               }

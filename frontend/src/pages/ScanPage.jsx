@@ -9,6 +9,7 @@ import HeatmapViewer from "../components/scan/HeatmapViewer";
 import PEAccordion from "../components/scan/PEAccordion";
 import ThreatGauge from "../components/scan/ThreatGauge";
 import UploadZone from "../components/scan/UploadZone";
+import SectionCard from "../components/layout/SectionCard";
 import { useSha256 } from "../hooks/useSha256";
 import { useToast } from "../hooks/useToast.jsx";
 
@@ -30,8 +31,23 @@ export default function ScanPage() {
   const { sha256, hashing, hashFile } = useSha256();
   const { pushToast } = useToast();
 
+  const refreshRecentScans = async () => {
+    const { data, error } = await safeRequest(() => client.get("/api/scans", { params: { limit: 5 } }));
+    if (error) {
+      setBackendOffline(true);
+      const fallback = loadRecentScans();
+      setRecentScans(fallback);
+      return;
+    }
+    setBackendOffline(false);
+    if (data?.items) {
+      setRecentScans(data.items);
+    }
+  };
+
   useEffect(() => {
     safeRequest(() => client.get("/api/health")).then(({ error }) => setBackendOffline(Boolean(error)));
+    refreshRecentScans();
   }, []);
 
   const onFileSelect = async (selected) => {
@@ -50,7 +66,7 @@ export default function ScanPage() {
       client.post("/api/scan", formData, {
         onUploadProgress: (event) => {
           if (!event.total) return;
-          setProgress(Math.round((event.loaded / event.total) * 100));
+          setProgress(Math.round((event.loaded / event.total) * 100));u
         },
       }),
     );
@@ -65,8 +81,8 @@ export default function ScanPage() {
     setBackendOffline(false);
     setResult(data);
     const nextRecent = [{ ...data, timestamp: Date.now() }, ...recentScans].slice(0, 5);
-    setRecentScans(nextRecent);
     localStorage.setItem("aegisRecentScans", JSON.stringify(nextRecent));
+    refreshRecentScans();
     pushToast({
       title: "Scan complete",
       message: `${data.prediction} detected at ${Math.round(data.confidence * 100)}% confidence.`,
@@ -107,6 +123,15 @@ export default function ScanPage() {
           sha256={sha256}
           hashing={hashing}
           recentScans={recentScans}
+          onRecentSelect={async (scan) => {
+            const { data, error } = await safeRequest(() => client.get(`/api/scans/${scan.sha256}`));
+            if (error) {
+              pushToast({ title: "Load failed", message: error, type: "error" });
+              return;
+            }
+            setResult(data);
+          }}
+          recentScansLabel={backendOffline ? "Local only" : "Stored in database"}
         />
 
         <section className="space-y-6">
@@ -140,6 +165,28 @@ export default function ScanPage() {
                 yaraMatches={result.yara_matches}
                 scanTimeMs={result.scan_time_ms}
               />
+              <SectionCard
+                title="Adaptive Malware Indicators"
+                subtitle="Static signals that suggest adaptive or evasive behavior."
+              >
+                <div className="space-y-2 text-sm">
+                  <div className="flex items-center justify-between">
+                    <span className="text-aegis-muted">Adaptive score</span>
+                    <span className="font-semibold">{result.adaptive_score ?? 0}</span>
+                  </div>
+                  {result.adaptive_indicators?.length ? (
+                    <div className="flex flex-wrap gap-2">
+                      {result.adaptive_indicators.map((item) => (
+                        <span key={item} className="rounded-full bg-aegis-warning/15 px-3 py-1 text-xs text-aegis-warning">
+                          {item.replaceAll("_", " ")}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-aegis-muted">No adaptive indicators detected.</p>
+                  )}
+                </div>
+              </SectionCard>
               <HeatmapViewer
                 imageB64={result.image_b64}
                 heatmapB64={result.heatmap_b64}

@@ -39,6 +39,7 @@ from modules.ngram import extract_ngram_features
 from modules.pe_extractor import extract_pe_features
 from modules.xai import generate_gradcam_explanation
 from modules.yara_scan import scan_file_with_yara_async
+from modules.adaptive_analysis import analyze_adaptive_indicators
 from pydantic import BaseModel, Field
 from redis.asyncio import Redis, from_url
 from telemetry.hub import LiveEventHub
@@ -77,6 +78,7 @@ celery_app = Celery(
 class LabelRequest(BaseModel):
     sha256: str
     label: str = Field(..., description="Confirmed malware family or Benign label")
+    source: str | None = Field(default="analyst", description="Label source")
 
 
 class QueueItem(BaseModel):
@@ -213,6 +215,7 @@ async def _persist_scan_response(response: dict[str, Any]) -> None:
     repo = await _get_repository()
     scan = _scan_record(response)
     await repo.insert_scan(scan)
+    await repo.insert_scan_result(response)
     await _broadcast("scan_completed", scan)
     await _persist_alert(build_scan_alert(scan))
 
@@ -227,6 +230,7 @@ async def _run_scan_pipeline(
     sha256 = await asyncio.to_thread(_hash_file, file_path)
     cache_key = f"aegis:scan:{sha256}"
     cached = None
+    errors: list[str] = []
     if client is not None:
         try:
             cached = await client.get(cache_key)
@@ -237,28 +241,79 @@ async def _run_scan_pipeline(
         response = json.loads(cached)
     else:
         started = time.perf_counter()
-        image_task = asyncio.to_thread(binary_file_to_image, file_path, sha256)
-        pe_task = asyncio.to_thread(extract_pe_features, file_path)
-        ngram_task = asyncio.to_thread(extract_ngram_features, file_path)
-        yara_task = asyncio.create_task(scan_file_with_yara_async(file_path))
 
-        image_result, pe_result, ngram_result = await asyncio.gather(
-            image_task, pe_task, ngram_task
-        )
+        try:
+            image_result = await asyncio.to_thread(
+                binary_file_to_image, file_path, sha256
+            )
+        except Exception as exc:
+            errors.append(f"image:{exc}")
+            image_result = {"image_path": None, "image_b64": None}
+
+        try:
+            pe_result = await asyncio.to_thread(extract_pe_features, file_path)
+        except Exception as exc:
+            errors.append(f"pe:{exc}")
+            pe_result = {
+                "feature_vector": [0.0] * 50,
+                "is_pe": False,
+                "imphash": "",
+                "sections": [],
+                "imports": {},
+                "header_flags": {},
+                "import_vocab_size": 0,
+            }
+
+        try:
+            ngram_result = await asyncio.to_thread(extract_ngram_features, file_path)
+        except Exception as exc:
+            errors.append(f"ngram:{exc}")
+            ngram_result = {"ngram_vector": [0.0] * 256}
+
+        try:
+            yara_result = await scan_file_with_yara_async(file_path)
+        except Exception as exc:
+            errors.append(f"yara:{exc}")
+            yara_result = {"matches": [], "yara_confidence": 0.0}
+
         combined_features = pe_result["feature_vector"] + ngram_result["ngram_vector"]
-        inference_result = await asyncio.to_thread(
-            run_inference, Path(image_result["image_path"]), combined_features
-        )
-        yara_result = await yara_task
+        inference_result: dict[str, Any] = {
+            "prediction": "Unknown",
+            "confidence": 0.0,
+            "top3": [],
+            "embedding": [],
+        }
+        if image_result.get("image_path"):
+            try:
+                inference_result = await asyncio.to_thread(
+                    run_inference,
+                    Path(str(image_result["image_path"])),
+                    combined_features,
+                )
+            except Exception as exc:
+                errors.append(f"inference:{exc}")
 
-        predicted_index = CLASS_LABELS.index(inference_result["prediction"])
-        xai_result = await asyncio.to_thread(
-            generate_gradcam_explanation,
-            Path(image_result["image_path"]),
-            sha256,
-            file_path,
-            predicted_index,
-        )
+        adaptive_result = analyze_adaptive_indicators(pe_result, yara_result)
+
+        predicted_index = None
+        if inference_result.get("prediction") in CLASS_LABELS:
+            predicted_index = CLASS_LABELS.index(inference_result["prediction"])
+
+        if predicted_index is not None and image_result.get("image_path"):
+            try:
+                xai_result = await asyncio.to_thread(
+                    generate_gradcam_explanation,
+                    Path(str(image_result["image_path"])),
+                    sha256,
+                    file_path,
+                    predicted_index,
+                )
+            except Exception as exc:
+                print(f"[xai] Grad-CAM unavailable: {exc}")
+                errors.append(f"xai:{exc}")
+                xai_result = {"top_offsets": [], "heatmap_b64": None}
+        else:
+            xai_result = {"top_offsets": [], "heatmap_b64": None}
 
         confidence = float(inference_result["confidence"])
         yara_confidence = float(yara_result["yara_confidence"])
@@ -273,12 +328,16 @@ async def _run_scan_pipeline(
             "top3": inference_result["top3"],
             "yara_matches": yara_result["matches"],
             "yara_confidence": yara_confidence,
+            "adaptive_score": adaptive_result["adaptive_score"],
+            "adaptive_indicators": adaptive_result["indicators"],
+            "adaptive_details": adaptive_result["details"],
             "top_offsets": xai_result["top_offsets"],
             "heatmap_b64": xai_result["heatmap_b64"],
             "image_b64": image_result["image_b64"],
             "pe_features": pe_result,
             "flagged_for_learning": confidence < 0.70,
             "scan_time_ms": int((time.perf_counter() - started) * 1000),
+            "errors": errors,
         }
         if client is not None:
             try:
@@ -453,6 +512,18 @@ async def list_scans(limit: int = Query(default=25, ge=1, le=200)) -> dict[str, 
     return {"items": await repo.list_scans(limit)}
 
 
+@app.get("/api/scans/{sha256}")
+async def get_scan_detail(sha256: str) -> dict[str, Any]:
+    repo = await _get_repository()
+    result = await repo.find_scan_result(sha256)
+    if result:
+        return result
+    summary = await repo.find_scan(sha256)
+    if summary:
+        return summary
+    raise HTTPException(status_code=404, detail="Scan result not found.")
+
+
 @app.get("/api/evolution")
 async def get_evolution_history() -> dict[str, Any]:
     if mlflow is None:
@@ -559,6 +630,19 @@ async def confirm_label(payload: LabelRequest) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail="Queue payload missing.")
     queue_item = json.loads(item)
 
+    repo = await _get_repository()
+    await repo.insert_label_action(
+        {
+            "id": str(uuid4()),
+            "sha256": payload.sha256,
+            "label": payload.label,
+            "source": payload.source or "analyst",
+            "created_at": utc_now(),
+            "prediction": queue_item.get("prediction"),
+            "confidence": queue_item.get("confidence"),
+        }
+    )
+
     file_path = settings.upload_dir / f"{payload.sha256}.bin"
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="Source file not found for retraining.")
@@ -571,6 +655,22 @@ async def confirm_label(payload: LabelRequest) -> dict[str, Any]:
     queue_item["task_id"] = task.id
     await client.set(item_key, json.dumps(queue_item))
     return {"queued": True, "task_id": task.id}
+
+
+@app.get("/api/labels/actions")
+async def list_label_actions(
+    limit: int = Query(default=50, ge=1, le=200)
+) -> dict[str, Any]:
+    repo = await _get_repository()
+    return {"items": await repo.list_label_actions(limit)}
+
+
+@app.get("/api/models/metadata")
+async def list_model_metadata(
+    limit: int = Query(default=50, ge=1, le=200)
+) -> dict[str, Any]:
+    repo = await _get_repository()
+    return {"items": await repo.list_model_metadata(limit)}
 
 
 @app.get("/api/watchers")

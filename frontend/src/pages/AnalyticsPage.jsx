@@ -32,6 +32,10 @@ export default function AnalyticsPage() {
   }, []);
 
   const overview = data?.overview ?? {};
+  const familyData = (data?.family_distribution ?? []).map((entry, index) => ({
+    ...entry,
+    fill: chartPalette[index % chartPalette.length],
+  }));
 
   return (
     <main className="page-shell grid-shell space-y-6">
@@ -55,7 +59,7 @@ export default function AnalyticsPage() {
                 <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
                 <XAxis dataKey="bucket" hide />
                 <YAxis tick={{ fill: "#d6e2ef", fontSize: 12 }} />
-                <Tooltip />
+                <Tooltip cursor={false} />
                 <Bar dataKey="count" fill="#22e1c3" radius={[8, 8, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
@@ -66,12 +70,15 @@ export default function AnalyticsPage() {
           <div className="h-72">
             <ResponsiveContainer>
               <PieChart>
-                <Pie data={data?.family_distribution ?? []} dataKey="count" nameKey="family" innerRadius={60} outerRadius={95}>
-                  {(data?.family_distribution ?? []).map((entry, index) => (
-                    <CellShim key={entry.family} fill={chartPalette[index % chartPalette.length]} />
-                  ))}
-                </Pie>
-                <Tooltip />
+                <Pie
+                  data={familyData}
+                  dataKey="count"
+                  nameKey="family"
+                  innerRadius={60}
+                  outerRadius={95}
+                  stroke="rgba(255,255,255,0.08)"
+                />
+                <Tooltip cursor={false} />
               </PieChart>
             </ResponsiveContainer>
           </div>
@@ -110,7 +117,7 @@ function ChartBlock({ data, xKey, barKey, color }) {
           <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
           <XAxis dataKey={xKey} tick={{ fill: "#d6e2ef", fontSize: 11 }} interval={0} angle={data.length > 5 ? -20 : 0} textAnchor="end" height={60} />
           <YAxis tick={{ fill: "#d6e2ef", fontSize: 12 }} />
-          <Tooltip />
+          <Tooltip cursor={false} />
           <Bar dataKey={barKey} fill={color} radius={[8, 8, 0, 0]} />
         </BarChart>
       </ResponsiveContainer>
@@ -118,6 +125,6 @@ function ChartBlock({ data, xKey, barKey, color }) {
   );
 }
 
-function CellShim({ fill }) {
-  return <Cell fill={fill} />;
+function CellShim() {
+  return null;
 }

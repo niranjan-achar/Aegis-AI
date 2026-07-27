@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 from collections import Counter, defaultdict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -44,6 +44,9 @@ class TelemetryRepository:
                 json.dumps(
                     {
                         "scans": [],
+                        "scan_results": [],
+                        "label_actions": [],
+                        "model_metadata": [],
                         "alerts": [],
                         "incidents": [],
                         "watch_folders": [],
@@ -63,6 +66,9 @@ class TelemetryRepository:
             if not self._path.exists():
                 return {
                     "scans": [],
+                    "scan_results": [],
+                    "label_actions": [],
+                    "model_metadata": [],
                     "alerts": [],
                     "incidents": [],
                     "watch_folders": [],
@@ -76,7 +82,7 @@ class TelemetryRepository:
 
     async def _insert(self, collection: str, document: dict[str, Any]) -> None:
         if self.use_mongo:
-            await self._db[collection].insert_one(document)
+            await self._db[collection].insert_one(dict(document))
             return
         payload = await self._read_local()
         payload[collection].append(document)
@@ -94,12 +100,35 @@ class TelemetryRepository:
 
     async def _get_collection(self, collection: str) -> list[dict[str, Any]]:
         if self.use_mongo:
-            return await self._db[collection].find().to_list(length=5000)
+            docs = await self._db[collection].find().to_list(length=5000)
+            return [self._normalize_mongo_doc(doc) for doc in docs]
         payload = await self._read_local()
         return payload.get(collection, [])
 
+    def _normalize_mongo_doc(self, doc: dict[str, Any] | None) -> dict[str, Any] | None:
+        if not doc:
+            return doc
+        if "_id" in doc:
+            doc = {**doc, "_id": str(doc["_id"])}
+        return doc
+
     async def insert_scan(self, scan: dict[str, Any]) -> None:
         await self._insert("scans", scan)
+
+    async def insert_scan_result(self, result: dict[str, Any]) -> None:
+        if self.use_mongo:
+            await self._db["scan_results"].delete_many({"sha256": result.get("sha256")})
+            await self._db["scan_results"].insert_one(dict(result))
+            return
+        payload = await self._read_local()
+        results = [
+            item
+            for item in payload.get("scan_results", [])
+            if item.get("sha256") != result.get("sha256")
+        ]
+        results.append(result)
+        payload["scan_results"] = results
+        await self._write_local(payload)
 
     async def list_scans(self, limit: int = 50) -> list[dict[str, Any]]:
         scans = await self._get_collection("scans")
@@ -111,6 +140,34 @@ class TelemetryRepository:
             if scan.get("sha256") == sha256:
                 return scan
         return None
+
+    async def find_scan_result(self, sha256: str) -> dict[str, Any] | None:
+        if self.use_mongo:
+            doc = await self._db["scan_results"].find_one({"sha256": sha256})
+            return self._normalize_mongo_doc(doc)
+        results = await self._get_collection("scan_results")
+        for item in reversed(results):
+            if item.get("sha256") == sha256:
+                return item
+        return None
+
+    async def insert_label_action(self, action: dict[str, Any]) -> None:
+        await self._insert("label_actions", action)
+
+    async def list_label_actions(self, limit: int = 50) -> list[dict[str, Any]]:
+        actions = await self._get_collection("label_actions")
+        return sorted(
+            actions, key=lambda item: item.get("created_at", ""), reverse=True
+        )[:limit]
+
+    async def insert_model_metadata(self, metadata: dict[str, Any]) -> None:
+        await self._insert("model_metadata", metadata)
+
+    async def list_model_metadata(self, limit: int = 50) -> list[dict[str, Any]]:
+        metadata = await self._get_collection("model_metadata")
+        return sorted(
+            metadata, key=lambda item: item.get("created_at", ""), reverse=True
+        )[:limit]
 
     async def insert_telemetry_event(self, event: dict[str, Any]) -> None:
         await self._insert("telemetry_events", event)
@@ -126,8 +183,54 @@ class TelemetryRepository:
         return sorted(events, key=lambda item: item.get("created_at", ""), reverse=True)[:limit]
 
     async def insert_alert(self, alert: dict[str, Any]) -> None:
+        if await self._is_duplicate_alert(alert):
+            return
         await self._insert("alerts", alert)
         await self.upsert_incident_from_alert(alert)
+
+    def _alert_signature(self, alert: dict[str, Any]) -> tuple[str, str, str]:
+        return (
+            str(alert.get("kind", "")),
+            str(alert.get("sha256") or alert.get("filename") or ""),
+            str(alert.get("title", "")),
+        )
+
+    async def _is_duplicate_alert(
+        self, alert: dict[str, Any], window_seconds: int = 120
+    ) -> bool:
+        signature = self._alert_signature(alert)
+        if not any(signature):
+            return False
+        cutoff = datetime.now(timezone.utc) - timedelta(seconds=window_seconds)
+        cutoff_iso = cutoff.isoformat()
+
+        if self.use_mongo:
+            query = {
+                "kind": signature[0],
+                "title": signature[2],
+            }
+            if signature[1]:
+                query["$or"] = [{"sha256": signature[1]}, {"filename": signature[1]}]
+            query["created_at"] = {"$gte": cutoff_iso}
+            existing = await self._db["alerts"].find_one(
+                query, sort=[("created_at", -1)]
+            )
+            return existing is not None
+
+        alerts = await self._get_collection("alerts")
+        for existing in reversed(alerts):
+            if self._alert_signature(existing) != signature:
+                continue
+            created_at = existing.get("created_at")
+            if not created_at:
+                continue
+            try:
+                created_dt = datetime.fromisoformat(created_at)
+            except ValueError:
+                continue
+            if created_dt >= cutoff:
+                return True
+        return False
 
     async def list_alerts(self, limit: int = 50) -> list[dict[str, Any]]:
         alerts = await self._get_collection("alerts")

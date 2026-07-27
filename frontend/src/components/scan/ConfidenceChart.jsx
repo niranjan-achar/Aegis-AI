@@ -15,6 +15,7 @@ export default function ConfidenceChart({ top3, yaraMatches }) {
             <XAxis type="number" hide domain={[0, 100]} />
             <YAxis type="category" dataKey="family" width={120} tick={{ fill: "#fff", fontSize: 12 }} />
             <Tooltip
+              cursor={false}
               contentStyle={{
                 background: "rgba(13, 17, 23, 0.92)",
                 border: "1px solid rgba(255,255,255,0.12)",

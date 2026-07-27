@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 import pickle
 import tempfile
 from copy import deepcopy
@@ -61,6 +62,43 @@ def _publish(event: dict[str, Any]) -> None:
     client = _redis()
     client.publish("training_progress", json.dumps(event))
     client.close()
+
+
+def _append_local_metadata(metadata: dict[str, Any]) -> None:
+    path = settings.telemetry_store_path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists():
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    else:
+        payload = {}
+    payload.setdefault("model_metadata", [])
+    payload["model_metadata"].append(metadata)
+    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+
+def _store_model_metadata(metadata: dict[str, Any]) -> None:
+    try:
+        from motor.motor_asyncio import AsyncIOMotorClient
+    except ModuleNotFoundError:
+        AsyncIOMotorClient = None
+
+    if settings.mongo_uri.strip() and AsyncIOMotorClient is not None:
+
+        async def _write() -> None:
+            client = AsyncIOMotorClient(settings.mongo_uri)
+            db = client[settings.mongo_db]
+            await db["model_metadata"].insert_one(metadata)
+            client.close()
+
+        try:
+            import asyncio
+
+            asyncio.run(_write())
+            return
+        except Exception:
+            pass
+
+    _append_local_metadata(metadata)
 
 
 def _load_pickle(path: Path) -> Any:

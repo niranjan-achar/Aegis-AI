@@ -21,13 +21,17 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
+        protected_namespaces=("settings_",),
     )
 
     app_name: str = Field(default="Aegis-AI API", alias="AEGIS_APP_NAME")
     env: str = Field(default="development", alias="AEGIS_ENV")
     host: str = Field(default="0.0.0.0", alias="AEGIS_HOST")
     port: int = Field(default=8000, alias="AEGIS_PORT")
-    cors_origins: str = Field(default="http://localhost:5173", alias="AEGIS_CORS_ORIGINS")
+    cors_origins: str = Field(
+        default="http://localhost:5173,http://127.0.0.1:5173",
+        alias="AEGIS_CORS_ORIGINS",
+    )
     redis_url: str = Field(default="redis://localhost:6379/0", alias="AEGIS_REDIS_URL")
     celery_broker_url: str = Field(
         default="redis://localhost:6379/0", alias="AEGIS_CELERY_BROKER_URL"
@@ -69,6 +73,21 @@ def get_settings() -> Settings:
     """Return a cached settings instance."""
 
     settings = Settings()
+    if not settings.upload_dir.is_absolute():
+        settings.upload_dir = BACKEND_DIR / settings.upload_dir
+    if not settings.image_dir.is_absolute():
+        settings.image_dir = BACKEND_DIR / settings.image_dir
+    if not settings.xai_dir.is_absolute():
+        settings.xai_dir = BACKEND_DIR / settings.xai_dir
+    if not settings.model_dir.is_absolute():
+        settings.model_dir = BACKEND_DIR / settings.model_dir
+    if not settings.rules_dir.is_absolute():
+        settings.rules_dir = BACKEND_DIR / settings.rules_dir
+    if not settings.data_dir.is_absolute():
+        settings.data_dir = BACKEND_DIR / settings.data_dir
+    if not settings.telemetry_store_path.is_absolute():
+        settings.telemetry_store_path = BACKEND_DIR / settings.telemetry_store_path
+
     for directory in (settings.upload_dir, settings.image_dir, settings.xai_dir):
         directory.mkdir(parents=True, exist_ok=True)
     settings.model_dir.mkdir(parents=True, exist_ok=True)

@@ -50,6 +50,11 @@
       linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
     background-size: 36px 36px;
   }
+
+  .recharts-tooltip-wrapper,
+  .recharts-tooltip-cursor {
+    display: none !important;
+  }
 }
 
 @keyframes dash-offset {

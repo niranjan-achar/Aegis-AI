@@ -9,6 +9,7 @@ from uuid import uuid4
 
 TRUSTED_PROCESS_NAMES = {
     "system",
+    "system idle process",
     "svchost.exe",
     "explorer.exe",
     "code.exe",
@@ -32,6 +33,7 @@ def severity_for_score(score: int) -> str:
 def build_scan_alert(scan: dict[str, Any]) -> dict[str, Any] | None:
     threat_score = int(scan.get("threat_score", 0))
     prediction = scan.get("prediction", "Unknown")
+    adaptive_score = int(scan.get("adaptive_score", 0))
     if threat_score < 55 and prediction == "Benign":
         return None
 
@@ -42,6 +44,8 @@ def build_scan_alert(scan: dict[str, Any]) -> dict[str, Any] | None:
         reasons.append("YARA signatures added supporting evidence")
     if bool(scan.get("flagged_for_learning")):
         reasons.append("Confidence fell below the active-learning threshold")
+    if adaptive_score >= 40:
+        reasons.append("Adaptive behavior indicators detected")
 
     return {
         "id": str(uuid4()),
@@ -85,6 +89,8 @@ def build_network_alert(event: dict[str, Any]) -> dict[str, Any] | None:
     process_name = str(event.get("process_name", "unknown")).lower()
     remote_port = int(event.get("remote_port", 0) or 0)
     if process_name in TRUSTED_PROCESS_NAMES and remote_port in {80, 443, 53}:
+        return None
+    if remote_port == 53:
         return None
 
     score = 40

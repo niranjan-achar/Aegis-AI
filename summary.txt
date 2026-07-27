@@ -1,0 +1,387 @@
+# An utonomous Self-Evolving Malware Detection System for Real-Time Threat Detection
+
+## Abstract
+This project presents an AI-driven, autonomous, and self-evolving malware detecting system for real-time threat detection. The system is designed to detect suspicious Windows binaries using a hybrid pipeline that combines static analysis, image-based deep learning, rule-based intelligence, and explainable AI. It integrates file ingestion, PE feature extraction, byte n-gram modeling, YARA matching, ONNX-based inference, Grad-CAM explainability, telemetry monitoring, risk-driven alerting, and analyst-in-the-loop retraining. The system operates in both full and degraded modes: when optional components such as Redis, MLflow, MongoDB, watchdog, psutil, timm, or torchcam are unavailable, core APIs continue functioning with fallback behavior. The architecture supports practical SOC-style workflows through live telemetry streams, incident grouping, queue-based labeling, and background model updates. Overall, the project demonstrates how AI can be used not only to classify malware but also to adapt continuously through feedback and operational context.
+
+## Keywords
+AI Malware Detection, Autonomous Security, Self-Evolving Models, Static Analysis, YARA, ONNX Runtime, Explainable AI, Grad-CAM, Active Learning, Real-Time Threat Detection
+
+## 1. Introduction
+Modern malware evolves rapidly through obfuscation, packing, and distribution tactics, making static signature-only solutions insufficient for long-term defense. A practical defense system must detect threats quickly, explain model behavior, and continuously improve from new evidence.
+
+This project is built around three core ideas from the title itself:
+1. AI-Driven: use machine learning and deep learning for malware classification.
+2. Autonomous: automate ingestion, scanning, telemetry, and alert generation.
+3. Self-Evolving: incorporate analyst feedback to retrain and update model artifacts.
+
+## 2. Problem Statement
+Most malware analysis workflows are fragmented and require manual tool-switching. Existing setups often miss one or more of the following:
+- unified real-time detection pipeline,
+- explainable outputs for analyst trust,
+- live telemetry and risk correlation,
+- feedback-driven continual model adaptation.
+
+## 3. Project Goals and Objectives (Aligned to Title)
+### 3.1 AI-Driven Goals
+1. Build a hybrid AI pipeline that fuses visual embeddings and handcrafted static features.
+2. Improve classification robustness through multi-signal evidence.
+3. Provide confidence-oriented outputs for reliable triage.
+
+### 3.2 Autonomous Goals
+1. Automate file ingestion, hashing, caching, and scan orchestration.
+2. Enable watch-folder auto-scan and live telemetry capture.
+3. Generate alerts and incidents automatically from risk rules.
+
+### 3.3 Self-Evolving Goals
+1. Queue uncertain samples for analyst review.
+2. Trigger retraining using confirmed labels.
+3. Validate and deploy updated model artifacts under quality constraints.
+
+### 3.4 Real-Time Threat Detection Goals
+1. Stream telemetry and training events through websockets.
+2. Keep low-latency inference through ONNX Runtime and cache reuse.
+3. Maintain service continuity even when optional dependencies fail.
+
+## 4. Scope
+### In Scope
+- Manual EXE and DLL scan via dashboard upload.
+- Automated watch-folder based suspicious file detection.
+- Static + deep learning hybrid classification.
+- Explainability overlays for analyst inspection.
+- Alerting, incidents, and analytics.
+- Active learning queue and retraining trigger.
+
+### Out of Scope (Current Version)
+- Enterprise endpoint agent rollout at scale.
+- Full automated remediation playbooks.
+- Native production support for ELF and Mach-O binaries.
+
+## 5. System Architecture
+The system follows a layered architecture:
+- Presentation Layer: React dashboard (Scan, Live, Analytics, Evolution, Queue, Network, Incidents, System, About).
+- API and Orchestration Layer: FastAPI routes, websocket channels, scan orchestration.
+- Detection Layer: ingestion, binary image conversion, PE extraction, n-gram extraction, YARA, inference, XAI.
+- Intelligence Layer: risk engine, alerts, incident grouping.
+- Telemetry Layer: watch-folder and network monitoring, event broadcast.
+- Data Layer: Redis (optional), JSON fallback store, optional MongoDB, optional MLflow.
+
+## 6. Technical Stack
+### Backend and Runtime
+- Python 3.10
+- FastAPI, Uvicorn, Pydantic
+
+### Detection and ML
+- NumPy, Pillow
+- pefile, yara-python
+- onnxruntime-gpu
+- joblib, scikit-learn head model
+- PyTorch, timm, torchcam (for explainability and training)
+
+### Async and Processing
+- Redis (cache/queue/pub-sub, optional)
+- Celery (background worker)
+
+### Telemetry and Storage
+- JSON local store (default)
+- motor + MongoDB (optional)
+- psutil (optional runtime and network metrics)
+- watchdog (optional watch-folder backend)
+
+### Frontend
+- React 18, Vite
+- Tailwind CSS
+- Recharts
+- Framer Motion
+
+### Environment
+- Docker Desktop for Redis container
+- Conda environment management
+
+## 7. Detailed Methodology and Modules
+Each module is described as Inputs, Process, Tools, and Outputs.
+
+### 7.1 Ingestion Module
+Inputs:
+- Uploaded file
+- Optional Redis client
+
+Process:
+1. Validate size and content.
+2. Compute SHA-256 hash.
+3. Check cache by hash.
+4. Persist file for scan on cache miss.
+
+Tools:
+- fastapi UploadFile, hashlib, redis.asyncio, aiofiles, pathlib
+
+Outputs:
+- cache_hit, sha256, file_path, cached_result
+
+### 7.2 Binary Image Conversion Module
+Inputs:
+- File path, SHA-256
+
+Process:
+1. Read bytes.
+2. Convert to uint8 array.
+3. Reshape into square grayscale matrix.
+4. Resize to 224 x 224.
+5. Save PNG and base64 output.
+
+Tools:
+- NumPy, Pillow, base64
+
+Outputs:
+- image_path, image_b64
+
+### 7.3 PE Feature Extraction Module
+Inputs:
+- File path
+
+Process:
+1. Parse PE headers and sections.
+2. Compute entropy and section statistics.
+3. Extract and compress import-vocabulary signals.
+4. Normalize into fixed vector.
+
+Tools:
+- pefile, NumPy, hashlib
+
+Outputs:
+- feature_vector and PE metadata summary
+
+### 7.4 N-gram Module
+Inputs:
+- File path
+
+Process:
+1. Build byte bigrams.
+2. Count frequencies.
+3. Apply log scaling.
+4. Select indexed bigram features.
+
+Tools:
+- NumPy
+
+Outputs:
+- ngram_vector
+
+### 7.5 YARA Scanning Module
+Inputs:
+- File path, rule files
+
+Process:
+1. Compile rules safely.
+2. Match file and parse strings/offsets/tags.
+3. Derive YARA confidence.
+
+Tools:
+- yara-python, ThreadPoolExecutor, asyncio
+
+Outputs:
+- yara_matches, yara_confidence
+
+### 7.6 Hybrid Inference Module
+Inputs:
+- Binary image path
+- Combined static vector
+
+Process:
+1. ONNX image embedding.
+2. Embedding plus tabular feature fusion.
+3. Classification head probability estimation.
+4. Top-3 verdict generation.
+
+Tools:
+- onnxruntime, NumPy, joblib, scikit-learn, Pillow
+
+Outputs:
+- prediction, confidence, top3, embedding
+
+### 7.7 Explainability Module
+Inputs:
+- Image path, file path, predicted class index
+
+Process:
+1. Compute Grad-CAM activation map.
+2. Build overlay heatmap.
+3. Map top activations to binary offsets and sections.
+
+Tools:
+- PyTorch, timm, torchcam, Pillow, NumPy, pefile
+
+Outputs:
+- heatmap artifacts and suspicious offsets
+
+### 7.8 Risk, Alert, and Incident Module
+Inputs:
+- Scan output, watcher events, network events
+
+Process:
+1. Compute threat score.
+2. Build severity-based alerts.
+3. Persist and broadcast alert events.
+4. Group related alerts into incidents.
+
+Tools:
+- risk utilities, repository abstraction, event hub
+
+Outputs:
+- alerts, incidents, live notifications
+
+### 7.9 Telemetry Module
+Inputs:
+- File-system and network events
+
+Process:
+1. Watch folders for suspicious artifacts.
+2. Collect network metadata when enabled.
+3. Persist and stream telemetry.
+
+Tools:
+- watchdog (optional), psutil (optional), asyncio
+
+Outputs:
+- telemetry feed and event-derived alerts
+
+### 7.10 Self-Evolving Retraining Module
+Inputs:
+- Analyst-confirmed labels
+- replay_buffer, fisher_matrix, validation_set
+
+Process:
+1. Train with EWC regularization.
+2. Validate quality gate.
+3. Export updated ONNX and model weights.
+4. Version and publish progress.
+
+Tools:
+- Celery, PyTorch, timm, ONNX export, MLflow, Redis pub-sub
+
+Outputs:
+- retraining decision, updated artifacts, training events
+
+## 8. End-to-End Workflow
+### 8.1 Autonomous Scan Workflow
+1. Upload or watcher event triggers pipeline.
+2. Ingestion validates, hashes, and checks cache.
+3. Binary image, PE, n-gram, and YARA branches execute.
+4. Hybrid inference computes class and confidence.
+5. Explainability module generates visual evidence.
+6. Risk engine computes threat score.
+7. Scan, alerts, and telemetry are persisted and broadcast.
+
+### 8.2 Self-Evolving Workflow
+1. Low-confidence samples enter queue.
+2. Analyst confirms ground-truth label.
+3. Worker retrains with EWC and replay.
+4. Validation gate accepts or rejects deployment.
+5. New artifacts become active on successful deployment.
+
+## 9. Implemented Features
+1. Manual malware scan dashboard.
+2. Persistent scan history and analytics.
+3. Watch-folder configuration and auto-scan.
+4. Live telemetry feed via websocket.
+5. Alert generation from file, network, and scan risk.
+6. Incident grouping from related alerts.
+7. System status page with dependency visibility.
+8. Evolution page with ML tracking fallback.
+9. Queue page for analyst labeling and retraining trigger.
+
+## 10. API Endpoints
+### REST
+- GET /api/health
+- POST /api/scan
+- GET /api/scans
+- GET /api/evolution
+- GET /api/queue
+- POST /api/label
+- GET /api/watchers
+- POST /api/watchers
+- DELETE /api/watchers
+- GET /api/telemetry
+- GET /api/alerts
+- GET /api/incidents
+- GET /api/analytics
+- GET /api/network
+- GET /api/system
+
+### WebSocket
+- WS /ws/telemetry
+- WS /ws/training
+
+## 11. Data Models
+### Scan
+- id, created_at, sha256, filename, prediction, confidence, threat_score
+- top3, yara_matches, yara_confidence, flagged_for_learning, scan_time_ms
+- source, watch_path, cache_hit
+
+### Telemetry Event
+- id, event_type, created_at
+- file and network contextual attributes
+
+### Alert
+- id, kind, severity, risk_score, title, summary, reasons
+- entity linkage fields and created_at
+
+### Incident
+- id, entity_key, title, severity, summary, alert_count
+- first_seen, last_seen
+
+### Watch Folder
+- id, path, recursive, extensions, created_at
+
+## 12. Real-Time and Reliability Strategy
+The system is designed for real-time operation with resilient fallback:
+- Redis offline: queue and training channels degrade, core APIs continue.
+- MLflow unavailable or incompatible: evolution endpoint returns safe fallback payload.
+- psutil unavailable: network and some runtime metrics become limited.
+- watchdog unavailable: watch-folder monitoring is reduced.
+- timm or torchcam unavailable: explainability is disabled without full service failure.
+- motor unavailable: persistence falls back to local JSON store.
+
+## 13. Security and Validation Controls
+1. Upload size limits and empty-file checks.
+2. SHA-256 based deduplication and traceability.
+3. Safe path management using pathlib.
+4. Structured API error handling.
+5. Separation of heavy tasks into async and worker layers.
+
+## 14. Limitations
+1. Primary support currently focused on Windows PE binaries.
+2. Full self-evolving loop depends on Redis and worker availability.
+3. Explainability depends on optional heavy dependencies.
+4. Enterprise auth and SIEM integration are future enhancements.
+
+## 15. Future Work
+1. Dynamic sandbox behavior analysis for runtime malware traits.
+2. Cross-platform binary support expansion.
+3. Advanced drift detection and scheduled retraining.
+4. Role-based access control and audit trails.
+5. MITRE ATT&CK mapping and threat-intel integration.
+
+## 16. Evaluation Metrics
+### Detection Metrics
+- Accuracy, precision, recall, F1-score, confusion matrix.
+
+### Operational Metrics
+- Mean scan latency
+- Cache hit ratio
+- Alert precision
+- API uptime under degraded-mode testing
+
+### Explainability Metrics
+- Analyst agreement on highlighted regions
+- Reduction in analyst triage time
+
+## 17. Reproducibility Checklist
+1. Prepare Python 3.10 and Node 18 environments.
+2. Install backend and frontend dependencies.
+3. Start Redis container.
+4. Place model artifacts in model directory.
+5. Run backend, worker, and frontend.
+6. Validate REST and websocket endpoints.
+
+## 18. Conclusion
+This work implements an AI-driven autonomous and self-evolving malware detecting system that aligns directly with the project title and core objective. The solution combines hybrid AI detection, operational automation, explainable outputs, and analyst-guided continual adaptation in a single real-time platform. It serves as both a deployable prototype and a strong research foundation for adaptive cyber defense systems.

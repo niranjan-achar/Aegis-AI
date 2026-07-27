@@ -104,7 +104,7 @@ function MiniBarChart({ data, xKey }) {
           <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
           <XAxis dataKey={xKey} tick={{ fill: "#d6e2ef", fontSize: 11 }} interval={0} angle={data.length > 4 ? -20 : 0} textAnchor="end" height={60} />
           <YAxis tick={{ fill: "#d6e2ef", fontSize: 12 }} />
-          <Tooltip />
+          <Tooltip cursor={false} />
           <Bar dataKey="count" fill="#47c0ff" radius={[8, 8, 0, 0]} />
         </BarChart>
       </ResponsiveContainer>

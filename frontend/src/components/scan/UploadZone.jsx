@@ -18,6 +18,8 @@ export default function UploadZone({
   sha256,
   hashing,
   recentScans,
+  onRecentSelect,
+  recentScansLabel,
 }) {
   const dropzone = useDropzone({
     accept: {
@@ -94,18 +96,25 @@ export default function UploadZone({
       <div className="glass-card p-4">
         <div className="mb-3 flex items-center justify-between">
           <h3 className="text-sm font-semibold">Recent scans</h3>
-          <span className="text-xs text-aegis-muted">Local only</span>
+          <span className="text-xs text-aegis-muted">{recentScansLabel}</span>
         </div>
         <div className="space-y-3">
           {recentScans.length ? (
             recentScans.map((scan) => (
-              <div key={`${scan.sha256}-${scan.scan_time_ms}`} className="rounded-2xl border border-white/10 bg-white/5 p-3">
+              <button
+                type="button"
+                key={`${scan.sha256}-${scan.scan_time_ms ?? scan.created_at}`}
+                onClick={() => onRecentSelect?.(scan)}
+                className="w-full rounded-2xl border border-white/10 bg-white/5 p-3 text-left transition hover:border-aegis-primary/40"
+              >
                 <div className="flex items-center justify-between gap-3">
                   <p className="truncate text-sm font-medium">{scan.filename}</p>
                   <span className="rounded-full bg-white/10 px-2 py-1 text-xs">{scan.threat_score}</span>
                 </div>
-                <p className="mt-1 text-xs text-aegis-muted">{new Date(scan.timestamp).toLocaleString()}</p>
-              </div>
+                <p className="mt-1 text-xs text-aegis-muted">
+                  {new Date(scan.created_at ?? scan.timestamp).toLocaleString()}
+                </p>
+              </button>
             ))
           ) : (
             <p className="text-sm text-aegis-muted">No scans yet. Your last 5 results will appear here.</p>

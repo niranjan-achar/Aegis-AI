@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Awaitable, Callable
@@ -124,6 +125,7 @@ class NetworkMonitor:
         self.settings = settings
         self.callback = callback
         self._seen: set[tuple[Any, ...]] = set()
+        self._last_emitted: dict[tuple[Any, ...], float] = {}
         self._stop = asyncio.Event()
 
     async def run(self) -> None:
@@ -133,6 +135,8 @@ class NetworkMonitor:
             current: set[tuple[Any, ...]] = set()
             for connection in psutil.net_connections(kind="inet"):
                 if not connection.raddr or connection.pid is None:
+                    continue
+                if connection.pid == 0:
                     continue
                 status = str(connection.status or "")
                 key = (
@@ -152,16 +156,28 @@ class NetworkMonitor:
                 except Exception:
                     process_name = "unknown"
 
+                remote_ip = getattr(connection.raddr, "ip", "")
+                remote_port = getattr(connection.raddr, "port", 0)
+                if remote_ip in {"127.0.0.1", "::1"}:
+                    continue
+
+                dedupe_key = (connection.pid, remote_ip, remote_port)
+                now = time.monotonic()
+                last_seen = self._last_emitted.get(dedupe_key)
+                if last_seen and now - last_seen < 10:
+                    continue
+                self._last_emitted[dedupe_key] = now
+
                 event = {
-                    "id": f"net-{connection.pid}-{getattr(connection.raddr, 'ip', 'na')}-{getattr(connection.raddr, 'port', 0)}",
+                    "id": f"net-{connection.pid}-{remote_ip}-{remote_port}-{int(time.time() * 1000)}",
                     "event_type": "network_connection",
                     "created_at": utc_now(),
                     "pid": connection.pid,
                     "process_name": process_name,
                     "local_ip": getattr(connection.laddr, "ip", ""),
                     "local_port": getattr(connection.laddr, "port", 0),
-                    "remote_ip": getattr(connection.raddr, "ip", ""),
-                    "remote_port": getattr(connection.raddr, "port", 0),
+                    "remote_ip": remote_ip,
+                    "remote_port": remote_port,
                     "status": status,
                     "direction": "outbound",
                 }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import client, { API_BASE_URL, safeRequest } from "../api/client";
 import SectionCard from "../components/layout/SectionCard";
@@ -18,8 +18,98 @@ export default function LiveMonitorPage() {
   const [scans, setScans] = useState([]);
   const [watchPath, setWatchPath] = useState("");
   const { pushToast } = useToast();
-  const wsUrl = useMemo(() => API_BASE_URL.replace(/^http/, "ws") + "/ws/telemetry", []);
+  const wsUrl = useMemo(() => {
+    if (API_BASE_URL.startsWith("http")) {
+      return API_BASE_URL.replace(/^http/, "ws") + "/ws/telemetry";
+    }
+    const wsScheme = window.location.protocol === "https:" ? "wss" : "ws";
+    return `${wsScheme}://${window.location.host}/ws/telemetry`;
+  }, []);
   const { messages, status } = useWebSocket(wsUrl, true);
+  const eventSeenRef = useRef(new Map());
+  const alertSeenRef = useRef(new Map());
+  const EVENT_DEDUP_WINDOW_MS = 3000;
+  const ALERT_DEDUP_WINDOW_MS = 60000;
+  const EVENT_CACHE_MAX = 200;
+
+  const buildEventKey = (event) => {
+    if (!event) return "";
+    const parts = [
+      event.event_type,
+      event.path,
+      event.process_name,
+      event.remote_ip,
+      event.remote_port,
+    ];
+    return parts.filter((part) => part !== undefined && part !== null && part !== "").join("|");
+  };
+
+  const shouldAcceptEvent = (event) => {
+    const key = buildEventKey(event);
+    if (!key) return true;
+    const now = Date.now();
+    const lastSeen = eventSeenRef.current.get(key);
+    if (lastSeen && now - lastSeen < EVENT_DEDUP_WINDOW_MS) {
+      return false;
+    }
+    eventSeenRef.current.set(key, now);
+    if (eventSeenRef.current.size > EVENT_CACHE_MAX) {
+      const cutoff = now - EVENT_DEDUP_WINDOW_MS * 4;
+      for (const [entryKey, timestamp] of eventSeenRef.current.entries()) {
+        if (timestamp < cutoff) {
+          eventSeenRef.current.delete(entryKey);
+        }
+      }
+    }
+    return true;
+  };
+
+  const dedupeEventList = (items) => {
+    const seen = new Set();
+    return items.filter((event) => {
+      const key = buildEventKey(event);
+      if (!key) return true;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  };
+
+  const buildAlertKey = (alert) => {
+    if (!alert) return "";
+    const parts = [
+      alert.kind,
+      alert.title,
+      alert.summary,
+      alert.filename,
+      alert.sha256,
+      alert.severity,
+    ];
+    return parts.filter((part) => part !== undefined && part !== null && part !== "").join("|");
+  };
+
+  const shouldAcceptAlert = (alert) => {
+    const key = buildAlertKey(alert);
+    if (!key) return true;
+    const now = Date.now();
+    const lastSeen = alertSeenRef.current.get(key);
+    if (lastSeen && now - lastSeen < ALERT_DEDUP_WINDOW_MS) {
+      return false;
+    }
+    alertSeenRef.current.set(key, now);
+    return true;
+  };
+
+  const dedupeAlertList = (items) => {
+    const seen = new Set();
+    return items.filter((alert) => {
+      const key = buildAlertKey(alert);
+      if (!key) return true;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  };
 
   const loadData = async () => {
     const [watchersRes, alertsRes, eventsRes, scansRes] = await Promise.all([
@@ -30,8 +120,8 @@ export default function LiveMonitorPage() {
     ]);
 
     if (watchersRes.data?.items) setWatchers(watchersRes.data.items);
-    if (alertsRes.data?.items) setAlerts(alertsRes.data.items);
-    if (eventsRes.data?.items) setEvents(eventsRes.data.items);
+    if (alertsRes.data?.items) setAlerts(dedupeAlertList(alertsRes.data.items));
+    if (eventsRes.data?.items) setEvents(dedupeEventList(eventsRes.data.items));
     if (scansRes.data?.items) setScans(scansRes.data.items);
   };
 
@@ -45,18 +135,22 @@ export default function LiveMonitorPage() {
     const latest = messages.at(-1);
     if (!latest?.type || !latest.payload) return;
     if (latest.type === "file_created" || latest.type === "network_connection" || latest.type === "watcher_scan_failed") {
-      setEvents((current) => [latest.payload, ...current].slice(0, 18));
+      if (shouldAcceptEvent(latest.payload)) {
+        setEvents((current) => [latest.payload, ...current].slice(0, 18));
+      }
     }
     if (latest.type === "scan_completed") {
       setScans((current) => [latest.payload, ...current].slice(0, 8));
     }
     if (latest.type === "alert_created") {
-      setAlerts((current) => [latest.payload, ...current].slice(0, 8));
-      pushToast({
-        title: latest.payload.title ?? "Alert raised",
-        message: latest.payload.summary ?? "Aegis-AI generated a live alert.",
-        type: latest.payload.severity === "low" ? "info" : "error",
-      });
+      if (shouldAcceptAlert(latest.payload)) {
+        setAlerts((current) => [latest.payload, ...current].slice(0, 8));
+        pushToast({
+          title: latest.payload.title ?? "Alert raised",
+          message: latest.payload.summary ?? "Aegis-AI generated a live alert.",
+          type: latest.payload.severity === "low" ? "info" : "error",
+        });
+      }
     }
   }, [messages, pushToast]);
 
@@ -148,8 +242,8 @@ export default function LiveMonitorPage() {
 
         <SectionCard title="Live Event Feed" subtitle="New files, network flows, failed watcher scans, and correlated telemetry arrive here first.">
           <div className="space-y-3">
-            {events.map((event) => (
-              <div key={event.id} className="rounded-2xl border border-white/10 bg-black/15 p-4">
+            {events.map((event, index) => (
+              <div key={`${buildEventKey(event) || "event"}-${index}`} className="rounded-2xl border border-white/10 bg-black/15 p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="text-sm font-semibold">{event.event_type.replaceAll("_", " ")}</p>

@@ -28,7 +28,7 @@ class LiveEventHub:
                 self._channels[channel].discard(websocket)
 
     async def broadcast(self, channel: str, payload: dict[str, Any]) -> None:
-        message = json.dumps(payload)
+        message = json.dumps(payload, default=str)
         async with self._lock:
             recipients = list(self._channels.get(channel, set()))
 
